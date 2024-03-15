@@ -35,7 +35,6 @@ class VM:
     def __init__(self, id, config) -> None:
         logging.debug(f'VM init parameters: {id}, {dict(config)}')
         self.id = id
-        # self.prox = ProxmoxAPI(config['DEFAULT']['proxmox_host'], user=config['DEFAULT']['proxmox_user'], password=config['DEFAULT']['proxmox_pass'], verify_ssl=False)
         self.prox = ProxmoxAPI(config['proxmox']['proxmox_host'], user=config['proxmox']['proxmox_user'], password=config['proxmox']['proxmox_pass'], verify_ssl=(True if config['proxmox']['proxmox_verify'].lower() == 'true' else False))
         nodes = self.prox.nodes.get()
         logging.debug(f'Found Proxmox nodes: {nodes}')
@@ -48,22 +47,14 @@ class VM:
                 break
             except core.ResourceException as e:
                 pass
-        self.storage = {}
+        self.storages = []
         for key, value in self.config.items():
             if ('ide' in key or 'sata' in key or 'scsi' in key) and ('qcow2' in value or 'raw' in value or 'vmdk' in value) and 'cdrom' not in value:
                 storage_name = value.split(':')[0]
                 storage_disk = value.split(':')[1].split(',')[0]
-                if storage_name in self.storage:
-                    self.storage[storage_name]['disks'].append(storage_disk)
-                else:
-                    self.storage[storage_name] = {}
-                    self.storage[storage_name]['disks'] = [storage_disk]
-
-        for storage_name in self.storage:
-            self.storage[storage_name]['volume'] = self.prox.storage(storage_name).get()['export'].strip('/')
-            self.storage[storage_name]['access'] = dict(config[storage_name])
-            logging.debug(f'add storage backend config {self.storage}')
-            self.storage[storage_name]['access']['verify'] = True if self.storage[storage_name]['access']['verify'].lower() == 'true' else False
+                storage = Storage(storage_name, config)
+                storage.add_vm_disk(storage_disk)
+                self.storages.append(storage)
 
     def __str__(self) -> str:
         return f"""
@@ -72,7 +63,7 @@ class VM:
             PVE connection: {self.prox},
             VM status:      {self.status},
             VM config:      {self.config},
-            Storage:        {self.storage}
+            Storage:        {([str(storage).strip() for storage in self.storages])}
         """
 
     def shutdown(self):
@@ -86,41 +77,45 @@ class VM:
 
     def create(self):
         timestamp = strftime("%Y-%m-%d_%H:%M:%S+0000", gmtime())
-        for storage_name, storage_info in self.storage.items():
-            volume = get_volume(storage_info['volume'], storage_info['access'])
-            with HostConnection(storage_info['access']['host'],
-                                storage_info['access']['user'],
-                                storage_info['access']['pass'],
-                                verify=storage_info['access']['verify']):
-                for file in storage_info['disks']:
-                    vm_dir, filename = os.path.split(file)
-                    snapshot_name = f'{os.path.splitext(filename)[0]}-snapshot-{timestamp}{os.path.splitext(filename)[1]}'
-                    request_body = {'volume': 
-                                        {'name': volume.name,
-                                         'uuid': volume.uuid},
-                                    'source_path': f'images/{file}',
-                                    'destination_path': f'images/{vm_dir}/{snapshot_name}',
-                                    'overwrite_destination': False
-                                    }
-                    file_clone = FileClone(**request_body)
-                    file_clone.post()
+        for storage in self.storages:
+            volume = get_volume(storage.volume_name, storage.access)
+            vm_dir, filename = os.path.split(storage.disk)
+            snapshot_name = f'{os.path.splitext(filename)[0]}-snapshot-{timestamp}{os.path.splitext(filename)[1]}'
+            request_body = {'volume':
+                                {'name': volume.name,
+                                    'uuid': volume.uuid},
+                            'source_path': f'images/{storage.disk}',
+                            'destination_path': f'images/{vm_dir}/{snapshot_name}',
+                            'overwrite_destination': False
+                            }
+            file_clone = FileClone(**request_body)
+            with HostConnection(storage.access['host'],
+                                storage.access['user'],
+                                storage.access['pass'],
+                                verify=storage.access['verify']):
+                file_clone.post()
 
 class Storage:
     def __init__(self, storage, config) -> None:
-        logging.debug(f'Storage init parameters: {storage}, {config}')
+        logging.debug(f'Storage init parameters: {storage}, {dict(config)}')
         self.storage = storage
         self.prox = ProxmoxAPI(config['proxmox']['proxmox_host'], user=config['proxmox']['proxmox_user'], password=config['proxmox']['proxmox_pass'], verify_ssl=(True if config['proxmox']['proxmox_verify'].lower() == 'true' else False))
         self.volume_name = self.prox.storage(storage).get()['export'].strip('/')
         self.access = dict(config[storage.removesuffix('-CLONE')])
         self.access['verify'] = True if self.access['verify'].lower() == 'true' else False
+        self.disk = ''
 
     def __str__(self) -> str:
         return f"""
             Storage name:   {self.storage},
             PVE connection: {self.prox},
             Storage volume: {self.volume_name},
-            Storage access: {self.access}
+            Storage access: {self.access},
+            VM disk:        {self.disk}
         """
+
+    def add_vm_disk(self, disk_name):
+        self.disk = disk_name
 
     def create(self):
         volume = get_volume(self.volume_name, self.access)
