@@ -19,12 +19,12 @@ from pprint import pprint
 import warnings
 warnings.simplefilter("ignore")
 
-def get_volume(vol, storage):
-    logging.debug(f'parameters: {vol}, {storage}')
-    with HostConnection(config[storage]['host'],
-                        config[storage]['user'],
-                        config[storage]['pass'],
-                        verify=(True if config[storage]['verify'].lower() == 'true' else False)):
+def get_volume(vol, access):
+    logging.debug(f'parameters: {vol}, {access}')
+    with HostConnection(access['host'],
+                        access['user'],
+                        access['pass'],
+                        verify=access['verify']):
         volumes = Volume.get_collection()
         for volume in volumes:
             if volume['name'] == vol:
@@ -32,11 +32,11 @@ def get_volume(vol, storage):
                 return volume
 
 class VM:
-    def __init__(self, id, **kwargs) -> None:
-        logging.debug(f'VM init parameters: {id}, {kwargs}')
+    def __init__(self, id, config) -> None:
+        logging.debug(f'VM init parameters: {id}, {dict(config)}')
         self.id = id
         # self.prox = ProxmoxAPI(config['DEFAULT']['proxmox_host'], user=config['DEFAULT']['proxmox_user'], password=config['DEFAULT']['proxmox_pass'], verify_ssl=False)
-        self.prox = ProxmoxAPI(kwargs['proxmox_host'], user=kwargs['proxmox_user'], password=kwargs['proxmox_pass'], verify_ssl=(True if kwargs['proxmox_verify'].lower() == 'true' else False))
+        self.prox = ProxmoxAPI(config['proxmox']['proxmox_host'], user=config['proxmox']['proxmox_user'], password=config['proxmox']['proxmox_pass'], verify_ssl=(True if config['proxmox']['proxmox_verify'].lower() == 'true' else False))
         nodes = self.prox.nodes.get()
         logging.debug(f'Found Proxmox nodes: {nodes}')
         for node in nodes:
@@ -61,6 +61,9 @@ class VM:
 
         for storage_name in self.storage:
             self.storage[storage_name]['volume'] = self.prox.storage(storage_name).get()['export'].strip('/')
+            self.storage[storage_name]['access'] = dict(config[storage_name])
+            logging.debug(f'add storage backend config {self.storage}')
+            self.storage[storage_name]['access']['verify'] = True if self.storage[storage_name]['access']['verify'].lower() == 'true' else False
 
     def __str__(self) -> str:
         return f"""
@@ -71,12 +74,6 @@ class VM:
             VM config:      {self.config},
             Storage:        {self.storage}
         """
-
-    def add_ontap_access(self, **kwargs):
-        self.ontap_host = kwargs['host']
-        self.ontap_user = kwargs['user']
-        self.ontap_pass = kwargs['pass']
-        self.ontap_verify = True if kwargs['verify'].lower() == 'true' else False
 
     def shutdown(self):
         self.prox.nodes(self.node).qemu(self.name).status.shutdown.post()
@@ -90,11 +87,11 @@ class VM:
     def create(self):
         timestamp = strftime("%Y-%m-%d_%H:%M:%S+0000", gmtime())
         for storage_name, storage_info in self.storage.items():
-            volume = get_volume(storage_info['volume'], storage_name)
-            with HostConnection(config[storage_name]['host'],
-                                config[storage_name]['user'],
-                                config[storage_name]['pass'],
-                                verify=False):
+            volume = get_volume(storage_info['volume'], storage_info['access'])
+            with HostConnection(storage_info['access']['host'],
+                                storage_info['access']['user'],
+                                storage_info['access']['pass'],
+                                verify=storage_info['access']['verify']):
                 for file in storage_info['disks']:
                     vm_dir, filename = os.path.split(file)
                     snapshot_name = f'{os.path.splitext(filename)[0]}-snapshot-{timestamp}{os.path.splitext(filename)[1]}'
@@ -109,19 +106,24 @@ class VM:
                     file_clone.post()
 
 class Storage:
-    def __init__(self, storage) -> None:
+    def __init__(self, storage, config) -> None:
+        logging.debug(f'Storage init parameters: {storage}, {config}')
         self.storage = storage
-        self.prox = ProxmoxAPI(config['DEFAULT']['proxmox_host'], user=config['DEFAULT']['proxmox_user'], password=config['DEFAULT']['proxmox_pass'], verify_ssl=False)
+        self.prox = ProxmoxAPI(config['proxmox']['proxmox_host'], user=config['proxmox']['proxmox_user'], password=config['proxmox']['proxmox_pass'], verify_ssl=(True if config['proxmox']['proxmox_verify'].lower() == 'true' else False))
         self.volume_name = self.prox.storage(storage).get()['export'].strip('/')
+        self.access = dict(config[storage.removesuffix('-CLONE')])
+        self.access['verify'] = True if self.access['verify'].lower() == 'true' else False
 
     def __str__(self) -> str:
         return f"""
             Storage name:   {self.storage},
-            Storage volume: {self.volume_name}
+            PVE connection: {self.prox},
+            Storage volume: {self.volume_name},
+            Storage access: {self.access}
         """
 
     def create(self):
-        volume = get_volume(self.volume_name, self.storage)
+        volume = get_volume(self.volume_name, self.access)
         timestamp = strftime("%Y-%m-%d_%H:%M:%S+0000", gmtime())
         snapshot = Snapshot.from_dict({
             "name": f'proxmox_snapshot_{timestamp}',
@@ -129,45 +131,45 @@ class Storage:
             "volume": volume.to_dict()
         })
         logging.debug(snapshot)
-        with HostConnection(config[self.storage]['host'],
-                            config[self.storage]['user'],
-                            config[self.storage]['pass'],
-                            verify=False):
+        with HostConnection(self.access['host'],
+                            self.access['user'],
+                            self.access['pass'],
+                            verify=self.access['verify']):
             snapshot.post()
 
     def restore(self, snapshot):
-        volume = get_volume(self.volume_name, self.storage)
-        with HostConnection(config[self.storage]['host'],
-                            config[self.storage]['user'],
-                            config[self.storage]['pass'],
-                            verify=False):
+        volume = get_volume(self.volume_name, self.access)
+        with HostConnection(self.access['host'],
+                            self.access['user'],
+                            self.access['pass'],
+                            verify=self.access['verify']):
             CLI().execute('volume snapshot restore', vserver=volume.svm.name, volume=volume.name, snapshot=snapshot, force=True)
 
     def delete(self, snapshot):
-        volume = get_volume(self.volume_name, self.storage)
-        with HostConnection(config[self.storage]['host'],
-                            config[self.storage]['user'],
-                            config[self.storage]['pass'],
-                            verify=False):
+        volume = get_volume(self.volume_name, self.access)
+        with HostConnection(self.access['host'],
+                            self.access['user'],
+                            self.access['pass'],
+                            verify=self.access['verify']):
             avail_snaps = Snapshot.get_collection(volume.uuid)
             for snap in avail_snaps:
                 if snapshot == snap.name:
                     snap.delete()
 
     def list(self):
-        volume = get_volume(self.volume_name, self.storage)
-        with HostConnection(config[self.storage]['host'],
-                            config[self.storage]['user'],
-                            config[self.storage]['pass'],
-                            verify=False):
-            avail_snaps = Snapshot.get_collection(volume.uuid)
-            for snap in avail_snaps:
-                if 'proxmox_snapshot_' in snap.name:
-                    snap.get()
-                    print(f'Name: {snap.name}, Comment: {snap.comment}')
+        volume = get_volume(self.volume_name, self.access)
+        with HostConnection(self.access['host'],
+                            self.access['user'],
+                            self.access['pass'],
+                            verify=self.access['verify']):
+            available_snapshots = Snapshot.get_collection(volume.uuid)
+            for snapshot in available_snapshots:
+                if 'proxmox_snapshot_' in snapshot.name:
+                    snapshot.get()
+                    print(f'Name: {snapshot.name}, Comment: {snapshot.comment}')
 
     def mount(self, snapshot):
-        parent_volume = get_volume(self.volume_name, self.storage)
+        parent_volume = get_volume(self.volume_name, self.access)
         request_body = {'name': f'{self.volume_name}_clone',
                         'svm': {'name': parent_volume.svm.name},
                         'clone': {
@@ -179,33 +181,33 @@ class Storage:
                         'nas': {'path': f'/{self.volume_name}_clone'}
                        }
         volume = Volume(**request_body)
-        with HostConnection(config[self.storage]['host'],
-                            config[self.storage]['user'],
-                            config[self.storage]['pass'],
-                            verify=False):
+        with HostConnection(self.access['host'],
+                            self.access['user'],
+                            self.access['pass'],
+                            verify=self.access['verify']):
             try:
                 volume.post(hydrate=True)
             except NetAppRestError as e:
                 print(e)
 
         store = self.prox.storage(self.storage).get()
-        result = self.prox.storage.post(storage=f'{self.storage}-CLONE', server=store['server'], type=store['type'], content=store['content'], export=f'/{self.volume_name}_clone')
+        self.prox.storage.post(storage=f'{self.storage}-CLONE', server=store['server'], type=store['type'], content=store['content'], export=f'/{self.volume_name}_clone')
         
     def unmount(self):
-        volume = get_volume(self.volume_name, self.storage.removesuffix('-CLONE'))
+        volume = get_volume(self.volume_name, self.access)
         if not volume.clone.is_flexclone:
             print(f'{self.storage} is not a mounted volume snapshot!')
             sys.exit(1)
 
         self.prox.storage(self.storage).delete()
-        with HostConnection(config[self.storage.removesuffix('-CLONE')]['host'],
-                            config[self.storage.removesuffix('-CLONE')]['user'],
-                            config[self.storage.removesuffix('-CLONE')]['pass'],
-                            verify=False):
+        with HostConnection(self.access['host'],
+                            self.access['user'],
+                            self.access['pass'],
+                            verify=self.access['verify']):
             volume.delete(force=True)
 
     def show(self):
-        volume = get_volume(self.volume_name, self.storage.removesuffix('-CLONE'))
+        volume = get_volume(self.volume_name, self.access)
         pprint(volume.to_dict())
 
 
@@ -215,7 +217,8 @@ def vm_create(args):
         uses the ONTAP volume snapshot function
         store vm info in snapshot name
     '''
-    vm = VM(args.vm, **config['DEFAULT'])
+    vm = VM(args.vm, config)
+    # vm.add_ontap_access(config)
     logging.debug(str(vm))
 
     start = False
@@ -236,31 +239,38 @@ def vm_create(args):
         vm.start()
 
 def storage_create(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.create()
 
 def storage_restore(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.restore(args.snapshot)
 
 def storage_delete(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.delete(args.snapshot)
 
 def storage_list(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.list()
 
 def storage_mount(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.mount(args.snapshot)
 
 def storage_unmount(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.unmount()
 
 def storage_show(args):
-    storage = Storage(args.storage)
+    storage = Storage(args.storage, config)
+    logging.debug(str(storage))
     storage.show()
 
 if __name__ == '__main__':
