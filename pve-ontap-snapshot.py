@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 from proxmoxer import ProxmoxAPI
 from proxmoxer import core, ResourceException
@@ -10,7 +11,7 @@ from netapp_ontap.error import NetAppRestError
 from time import gmtime, strftime
 import os.path
 import sys
-import argparse
+import argparse, argcomplete
 import logging
 import configparser
 from pprint import pprint
@@ -278,6 +279,7 @@ if __name__ == '__main__':
     parser_storage_show.add_argument('-storage', type=str, required=True, help='Proxmox Storage ID')
     parser_storage_show.set_defaults(context=Storage, cmd='show')
 
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     config = configparser.ConfigParser()

@@ -110,6 +110,14 @@ The `show` command shows the metadata of the backing ONTAP volume of a Proxmox s
 $ pve-ontap-snapshot.py storage show -storage ONTAP01
 ```
 
+## Autocompletion
+
+`pve-ontap-snapshot.py` uses the `argparse` module from the Python3 standard library. The third-party module `argcomplete` offers an easy and fast way to add autocompletion to a Python3 script. To enable autocompletion for `pve-ontap-storage.py` run following command and add it to your `.bashrc`.
+
+```bash
+$ eval "$(register-python-argcomplete pve-ontap-snapshot.py)"
+```
+
 ## Problems
 
 ### Add VM disk snapshot to Proxmox
