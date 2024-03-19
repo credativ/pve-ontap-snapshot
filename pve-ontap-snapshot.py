@@ -68,13 +68,51 @@ class VM:
         """
 
     def shutdown(self):
-        self.prox.nodes(self.node).qemu(self.name).status.shutdown.post()
+        logging.info(f'shutting down vm {self.id} ({self.name})...')
+        try:
+            task = self.prox.nodes(self.node).qemu(self.id).status.shutdown.post()
+            logging.debug(f'upid: {task}')
+            while True:
+                status = self.prox.nodes(self.node).tasks(task).status.get()['status']
+                logging.debug(status)
+                if status == 'stopped':
+                    self.status = self.prox.nodes(self.node).qemu(self.id).status.current.get()['status']
+                    break
+        except RecursionError as e:
+            print(e)
+            sys.exit(1)
+        logging.info(f'...done')
 
     def suspend(self):
-        self.prox.nodes(self.node).qemu(self.name).status.suspend.post(todisk=True)
+        logging.info(f'suspending vm {self.id} ({self.name})...')
+        try:
+            task = self.prox.nodes(self.node).qemu(self.id).status.suspend.post(todisk=1)
+            logging.debug(f'upid: {task}')
+            while True:
+                status = self.prox.nodes(self.node).tasks(task).status.get()['status']
+                logging.debug(status)
+                if status == 'stopped':
+                    self.status = self.prox.nodes(self.node).qemu(self.id).status.current.get()['status']
+                    break
+        except RecursionError as e:
+            print(e)
+            sys.exit(1)
+        logging.info(f'...done')
 
     def start(self):
-        self.prox.nodes(self.node).qemu(self.name).status.start.post()
+        logging.info(f'starting vm {self.id} ({self.name})...')
+        try:
+            task = self.prox.nodes(self.node).qemu(self.id).status.start.post()
+            logging.debug(f'upid: {task}')
+            while True:
+                status = self.prox.nodes(self.node).tasks(task).status.get()['status']
+                logging.debug(status)
+                if status == 'running':
+                    break
+        except RecursionError as e:
+            print(e)
+            sys.exit(1)
+        logging.info(f'...done')
 
     def create(self, suspend=False, shutdown=False):
         if suspend:
@@ -243,8 +281,8 @@ if __name__ == '__main__':
     parser_vm = subparser_vm.add_subparsers(title='VM actions', required=True)
     parser_vm_create = parser_vm.add_parser('create', help='Create a VM snapshot using ONTAP ObjectClone')
     parser_vm_create.add_argument('-vm', type=int, required=True, help='Proxmox VM ID')
-    parser_vm_create.add_argument('-suspend', type=bool, default=False, help='Suspend VM before creating the snapshot')
-    parser_vm_create.add_argument('-shutdown', type=bool, default=False, help='Shutdown the VM before creating the snapshot')
+    parser_vm_create.add_argument('-suspend', action='store_true', help='Suspend VM before creating the snapshot')
+    parser_vm_create.add_argument('-shutdown', action='store_true', help='Shutdown the VM before creating the snapshot')
     parser_vm_create.set_defaults(context=VM, cmd='create')
 
     parser_storage = subparser_storage.add_subparsers(title='Storage actions', required=True)
