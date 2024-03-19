@@ -122,6 +122,7 @@ class VM:
         if self.status != 'stopped':
             logging.warning('creating snapshot of a running vm, the result might be inconsistent')
 
+        logging.info(f'creating vm {self.id} ({self.name}) disk snapshot...')
         timestamp = strftime("%Y-%m-%d_%H:%M:%S+0000", gmtime())
         for storage in self.storages:
             volume = get_volume(storage.volume_name, storage.access)
@@ -140,6 +141,7 @@ class VM:
                                 storage.access['pass'],
                                 verify=storage.access['verify']):
                 file_clone.post()
+        logging.info(f'...done')
         if suspend or shutdown:
             self.start()
 
@@ -170,6 +172,7 @@ class Storage:
         self.disk = disk_name
 
     def create(self):
+        logging.info(f'creating storage {self.storage} snapshot...')
         volume = get_volume(self.volume_name, self.access)
         timestamp = strftime("%Y-%m-%d_%H:%M:%S+0000", gmtime())
         snapshot = Snapshot.from_dict({
@@ -183,16 +186,20 @@ class Storage:
                             self.access['pass'],
                             verify=self.access['verify']):
             snapshot.post()
+        logging.info(f'...done')
 
     def restore(self, snapshot):
+        logging.info(f'restore snapshot {snapshot} to storage {self.storage}...')
         volume = get_volume(self.volume_name, self.access)
         with HostConnection(self.access['host'],
                             self.access['user'],
                             self.access['pass'],
                             verify=self.access['verify']):
             CLI().execute('volume snapshot restore', vserver=volume.svm.name, volume=volume.name, snapshot=snapshot, force=True)
+        logging.info(f'...done')
 
     def delete(self, snapshot):
+        logging.info(f'deleting snapshot {snapshot}...')
         volume = get_volume(self.volume_name, self.access)
         with HostConnection(self.access['host'],
                             self.access['user'],
@@ -202,8 +209,10 @@ class Storage:
             for snap in avail_snaps:
                 if snapshot == snap.name:
                     snap.delete()
+        logging.info(f'...done')
 
     def list(self):
+        logging.info(f'list storage {self.storage} snapshots...')
         volume = get_volume(self.volume_name, self.access)
         with HostConnection(self.access['host'],
                             self.access['user'],
@@ -214,8 +223,10 @@ class Storage:
                 if 'proxmox_snapshot_' in snapshot.name:
                     snapshot.get()
                     print(f'Name: {snapshot.name}, Comment: {snapshot.comment}')
+        logging.info(f'...done')
 
     def mount(self, snapshot):
+        logging.info(f'mounting volume {self.storage} snapshot...')
         parent_volume = get_volume(self.volume_name, self.access)
         request_body = {'name': f'{self.volume_name}_clone',
                         'svm': {'name': parent_volume.svm.name},
@@ -239,11 +250,13 @@ class Storage:
 
         store = self.prox.storage(self.storage).get()
         self.prox.storage.post(storage=f'{self.storage}-CLONE', server=store['server'], type=store['type'], content=store['content'], export=f'/{self.volume_name}_clone')
+        logging.info(f'...done')
         
     def unmount(self):
+        logging.info(f'unmounting mounted volume snapshot {self.storage}...')
         volume = get_volume(self.volume_name, self.access)
         if not volume.clone.is_flexclone:
-            print(f'{self.storage} is not a mounted volume snapshot!')
+            logging.info(f'{self.storage} is not a mounted volume snapshot!')
             sys.exit(1)
 
         self.prox.storage(self.storage).delete()
@@ -252,6 +265,7 @@ class Storage:
                             self.access['pass'],
                             verify=self.access['verify']):
             volume.delete(force=True)
+        logging.info(f'...done')
 
     def show(self):
         volume = get_volume(self.volume_name, self.access)

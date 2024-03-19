@@ -40,7 +40,7 @@ TBD
 
 ## Config
 
-The config file contains the credentials for the Proxmox API and the credentials for the NetApp ONTAP management interfaces. By default the `config.ini` in the current directory is used, the `-config` option can the used to overwrite the default config location.
+The config file contains the credentials for the Proxmox API and the credentials for the NetApp ONTAP management interfaces. By default the `config.ini` in the current directory is used, the `-config` option can be used to overwrite the default config location.
 
 The `proxmox` section contains the credentials for the Proxmox API, every other section is named after the storage id in Proxmox and holds the credentials of the ONTAP management interface of the ONTAP cluster exporting the filesystem via NFS.
 
