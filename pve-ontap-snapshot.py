@@ -80,7 +80,7 @@ class VM:
                     break
                 else:
                     sleep(1)
-        except RecursionError as e:
+        except ResourceException as e:
             print(e)
             sys.exit(1)
         logging.info(f'...done')
@@ -98,7 +98,7 @@ class VM:
                     break
                 else:
                     sleep(1)
-        except RecursionError as e:
+        except ResourceException as e:
             print(e)
             sys.exit(1)
         logging.info(f'...done')
@@ -115,7 +115,7 @@ class VM:
                     break
                 else:
                     sleep(1)
-        except RecursionError as e:
+        except ResourceException as e:
             print(e)
             sys.exit(1)
         logging.info(f'...done')
