@@ -2,13 +2,13 @@
 # PYTHON_ARGCOMPLETE_OK
 
 from proxmoxer import ProxmoxAPI
-from proxmoxer import core, ResourceException
+from proxmoxer import ResourceException
 
 from netapp_ontap import HostConnection
 from netapp_ontap.resources import Volume, Snapshot, FileClone, CLI
 from netapp_ontap.error import NetAppRestError
 
-from time import gmtime, strftime
+from time import gmtime, strftime, sleep
 import os.path
 import sys
 import argparse, argcomplete
@@ -78,6 +78,8 @@ class VM:
                 if status == 'stopped':
                     self.status = self.prox.nodes(self.node).qemu(self.id).status.current.get()['status']
                     break
+                else:
+                    sleep(1)
         except RecursionError as e:
             print(e)
             sys.exit(1)
@@ -94,6 +96,8 @@ class VM:
                 if status == 'stopped':
                     self.status = self.prox.nodes(self.node).qemu(self.id).status.current.get()['status']
                     break
+                else:
+                    sleep(1)
         except RecursionError as e:
             print(e)
             sys.exit(1)
@@ -109,6 +113,8 @@ class VM:
                 logging.debug(status)
                 if status == 'running':
                     break
+                else:
+                    sleep(1)
         except RecursionError as e:
             print(e)
             sys.exit(1)
