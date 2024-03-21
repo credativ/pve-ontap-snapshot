@@ -51,6 +51,7 @@ Example:
 proxmox_host = 172.16.60.128
 proxmox_user = root@pam
 proxmox_pass = SuPeRs3cr3t
+proxmox_verify = false
 
 # Each section name represents a storage id in Proxmox, the names must match
 # The storage must be an ONTAP system, host points to the ONTAP management interface
@@ -58,11 +59,13 @@ proxmox_pass = SuPeRs3cr3t
 host = 192.168.38.50
 user = admin
 pass = SuPeRs3cr3t
+verify = false
 
 [BACKUP01]
 host = 192.168.38.50
 user = admin
 pass = SuPeRs3cr3t
+verify = false
 ```
 
 ## Usage
