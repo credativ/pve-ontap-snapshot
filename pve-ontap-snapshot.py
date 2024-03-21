@@ -1,6 +1,71 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 
+"""Create ONTAP snapshots for Proxmox
+
+Classes()
+--------
+
+VM()
+    Handel VM snapshots
+
+    Methods()
+    ---------
+
+        shutdown()
+            Shutdown the VM represented by the VM object
+
+        suspend()
+            Suspend the VM represented by the VM object
+
+        start()
+            Start the VM represented by the VM object
+
+        create()
+            Create snapshots of the VMs disks using ObjectClone
+
+Storage()
+    Handel storage snapshots
+
+    Methods()
+    ---------
+
+    add_vm_disk()
+        Add a VM disk to the Storage object
+
+    create()
+        Create a snapshot of the Storage object using volume snapshots
+
+    restore()
+        Restore a volume from a given volume snapshot
+
+    delete()
+        Delete a volume snapshot
+
+    list()
+        List a volume snapshots of a Storage object
+
+    mount()
+        Mount a snapshot using FlexClone and add is a storage to Proxmox
+
+    unmount()
+        Remove a FlexClone volume and remove its storage from Proxmox
+
+    show()
+        Show metadata of the volume backing the storage
+
+Functions()
+-----------
+
+get_volume()
+
+    Return volume object from volume name
+
+caller()
+    Create object and call one of its methods as requested by the cmdline args
+
+"""
+
 from proxmoxer import ProxmoxAPI
 from proxmoxer import ResourceException
 
@@ -21,6 +86,7 @@ import warnings
 warnings.simplefilter("ignore")
 
 def get_volume(vol, access):
+    """Return volume object from volume name"""
     logging.debug(f'parameters: {vol}, {access}')
     with HostConnection(access['host'],
                         access['user'],
@@ -34,6 +100,7 @@ def get_volume(vol, access):
 
 class VM:
     def __init__(self, id, config) -> None:
+        """Initialise VM object"""
         logging.debug(f'VM init parameters: {id}, {dict(config)}')
         self.id = id
         self.prox = ProxmoxAPI(config['proxmox']['proxmox_host'], user=config['proxmox']['proxmox_user'], password=config['proxmox']['proxmox_pass'], verify_ssl=(True if config['proxmox']['proxmox_verify'].lower() == 'true' else False))
@@ -58,6 +125,7 @@ class VM:
                 self.storages.append(storage)
 
     def __str__(self) -> str:
+        """Print VM object in human readable format"""
         return f"""
             VM name:        {self.name},
             VM id:          {self.id},
@@ -68,6 +136,7 @@ class VM:
         """
 
     def shutdown(self):
+        """Shutdown the VM represented by the VM object"""
         logging.info(f'shutting down vm {self.id} ({self.name})...')
         try:
             task = self.prox.nodes(self.node).qemu(self.id).status.shutdown.post()
@@ -86,6 +155,7 @@ class VM:
         logging.info(f'...done')
 
     def suspend(self):
+        """Suspend the VM represented by the VM object"""
         logging.info(f'suspending vm {self.id} ({self.name})...')
         try:
             task = self.prox.nodes(self.node).qemu(self.id).status.suspend.post(todisk=1)
@@ -104,6 +174,7 @@ class VM:
         logging.info(f'...done')
 
     def start(self):
+        """Start the VM represented by the VM object"""
         logging.info(f'starting vm {self.id} ({self.name})...')
         try:
             task = self.prox.nodes(self.node).qemu(self.id).status.start.post()
@@ -121,6 +192,7 @@ class VM:
         logging.info(f'...done')
 
     def create(self, suspend=False, shutdown=False):
+        """Create snapshots of the VMs disks using ObjectClone"""
         if suspend:
             self.suspend()
         if shutdown:
@@ -153,6 +225,7 @@ class VM:
 
 class Storage:
     def __init__(self, storage, config) -> None:
+        """Initialise Storage object"""
         logging.debug(f'Storage init parameters: {storage}, {dict(config)}')
         self.storage = storage
         self.prox = ProxmoxAPI(config['proxmox']['proxmox_host'], user=config['proxmox']['proxmox_user'], password=config['proxmox']['proxmox_pass'], verify_ssl=(True if config['proxmox']['proxmox_verify'].lower() == 'true' else False))
@@ -166,6 +239,7 @@ class Storage:
         self.disk = ''
 
     def __str__(self) -> str:
+        """Print Storage object in human readable format"""
         return f"""
             Storage name:   {self.storage},
             PVE connection: {self.prox},
@@ -175,9 +249,11 @@ class Storage:
         """
 
     def add_vm_disk(self, disk_name):
+        """Add a VM disk to the Storage object"""
         self.disk = disk_name
 
     def create(self):
+        """Create a snapshot of the Storage object using volume snapshots"""
         logging.info(f'creating storage {self.storage} snapshot...')
         volume = get_volume(self.volume_name, self.access)
         timestamp = strftime("%Y-%m-%d_%H:%M:%S+0000", gmtime())
@@ -195,6 +271,7 @@ class Storage:
         logging.info(f'...done')
 
     def restore(self, snapshot):
+        """Restore a volume from a given volume snapshot"""
         logging.info(f'restore snapshot {snapshot} to storage {self.storage}...')
         volume = get_volume(self.volume_name, self.access)
         with HostConnection(self.access['host'],
@@ -205,6 +282,7 @@ class Storage:
         logging.info(f'...done')
 
     def delete(self, snapshot):
+        """Delete a volume snapshot"""
         logging.info(f'deleting snapshot {snapshot}...')
         volume = get_volume(self.volume_name, self.access)
         with HostConnection(self.access['host'],
@@ -218,6 +296,7 @@ class Storage:
         logging.info(f'...done')
 
     def list(self):
+        """List a volume snapshots of a Storage object"""
         logging.info(f'list storage {self.storage} snapshots...')
         volume = get_volume(self.volume_name, self.access)
         with HostConnection(self.access['host'],
@@ -232,6 +311,7 @@ class Storage:
         logging.info(f'...done')
 
     def mount(self, snapshot):
+        """Mount a snapshot using FlexClone and add is a storage to Proxmox"""
         logging.info(f'mounting volume {self.storage} snapshot...')
         parent_volume = get_volume(self.volume_name, self.access)
         request_body = {'name': f'{self.volume_name}_clone',
@@ -259,6 +339,7 @@ class Storage:
         logging.info(f'...done')
         
     def unmount(self):
+        """Remove a FlexClone volume and remove its storage from Proxmox"""
         logging.info(f'unmounting mounted volume snapshot {self.storage}...')
         volume = get_volume(self.volume_name, self.access)
         if not volume.clone.is_flexclone:
@@ -274,10 +355,12 @@ class Storage:
         logging.info(f'...done')
 
     def show(self):
+        """Show metadata of the volume backing the storage"""
         volume = get_volume(self.volume_name, self.access)
         pprint(volume.to_dict())
 
 def caller(args):
+    """Create object and call one of its methods as requested by the cmdline args"""
     logging.debug(args)
     context = args.context((args.vm if 'vm' in args else args.storage), config)
     logging.debug(str(context))
