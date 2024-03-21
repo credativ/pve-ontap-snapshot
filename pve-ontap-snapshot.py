@@ -81,7 +81,7 @@ class VM:
                 else:
                     sleep(1)
         except ResourceException as e:
-            print(e)
+            logging.error(e)
             sys.exit(1)
         logging.info(f'...done')
 
@@ -99,7 +99,7 @@ class VM:
                 else:
                     sleep(1)
         except ResourceException as e:
-            print(e)
+            logging.error(e)
             sys.exit(1)
         logging.info(f'...done')
 
@@ -116,7 +116,7 @@ class VM:
                 else:
                     sleep(1)
         except ResourceException as e:
-            print(e)
+            logging.error(e)
             sys.exit(1)
         logging.info(f'...done')
 
@@ -159,7 +159,7 @@ class Storage:
         try:
             self.volume_name = self.prox.storage(storage).get()['export'].strip('/')
         except ResourceException as e:
-            print(e)
+            logging.error(e)
             sys.exit(1)
         self.access = dict(config[storage.removesuffix('-CLONE')])
         self.access['verify'] = True if self.access['verify'].lower() == 'true' else False
@@ -228,7 +228,7 @@ class Storage:
             for snapshot in available_snapshots:
                 if 'proxmox_snapshot_' in snapshot.name:
                     snapshot.get()
-                    print(f'Name: {snapshot.name}, Comment: {snapshot.comment}')
+                    logging.info(f'Name: {snapshot.name}, Comment: {snapshot.comment}')
         logging.info(f'...done')
 
     def mount(self, snapshot):
@@ -252,7 +252,7 @@ class Storage:
             try:
                 volume.post(hydrate=True)
             except NetAppRestError as e:
-                print(e)
+                logging.error(e)
 
         store = self.prox.storage(self.storage).get()
         self.prox.storage.post(storage=f'{self.storage}-CLONE', server=store['server'], type=store['type'], content=store['content'], export=f'/{self.volume_name}_clone')
@@ -262,7 +262,7 @@ class Storage:
         logging.info(f'unmounting mounted volume snapshot {self.storage}...')
         volume = get_volume(self.volume_name, self.access)
         if not volume.clone.is_flexclone:
-            logging.info(f'{self.storage} is not a mounted volume snapshot!')
+            logging.error(f'{self.storage} is not a mounted volume snapshot!')
             sys.exit(1)
 
         self.prox.storage(self.storage).delete()
