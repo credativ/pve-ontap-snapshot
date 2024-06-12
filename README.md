@@ -2,7 +2,7 @@
 
 ## Motivation
 
-One of the advantages of virtualization is the ability to easily create snapshots of the virtual machines disk image. Proxmox offers this ability for the `qcow2` disk image format, but not for the `raw` format on NFS mounted storage. When creating a VM disk snapshot with Proxmox on the local filesystem, Proxmox uses the features of the underlying filesystem to create snapshots. In cases where the VM disk is placed on a NFS storage it is not possibly for Proxmox to use any filesystem features to create a snapshot and has to fallback to file based snapshots. File based snapshots have a huge negativ impact on the VMs disk performance.
+One of the advantages of virtualization is the ability to easily create snapshots of the virtual machines disk image. Proxmox offers this ability for the `qcow2` disk image format, but not for the `raw` format on NFS mounted storage. When creating a VM disk snapshot with Proxmox on the local filesystem, Proxmox uses the features of the underlying filesystem to create snapshots. In cases where the VM disk is placed on a NFS storage it is not possibly for Proxmox to use any filesystem features to create a snapshot and has to fallback to file based snapshots. File based snapshots have a huge negative impact on the VMs disk performance.
 
 Since NetApp ONTAP offers different snapshot features on file level and on volume level, it would be nice to use this features with Proxmox. This script tries to make this features usable with Proxmox as a proof-of-concept.
 
@@ -34,35 +34,6 @@ Creating ObjectClone snapshots from a VM disk is independent form the VM disks f
 NetApp ONTAP has the ability to create so called volume snapshots. A volume contains the filesystem, the snapshot is basically freezing the underlying blocks and writing any changes to new blocks, creating a volume snapshot is therefore very fast and also space efficient, since only changes after creating the snapshot take up additional space.
 
 This volume snapshots can be used to restore a volume to its state at the moment the snapshot was taken or with the FlexClone feature to create a new volume from the snapshot. This new volume is then added to Proxmox as a new storage. 
-
-## Performance
-
-The performance difference between an ONTAP snapshot and a PVE snapshot can be seen for write operations, while reading is almost equally fast. The test was done with different file sizes. In the table the different read and write performance in MiB/s is shown and the used file size.
-
-The writing speed to a PVE file snapshot does not even reach half of the writing speed ONTAP has to offer, while an ONTAP snapshot offers full speed.
-
-```mermaid
-xychart-beta
-    title "Read/Write Performance ONTAP"
-    x-axis ["read ONATP Snap", "write ONTAP Snap", "read PVE Snap", "write PVE Snap"]
-    y-axis "MiB/s" 200 --> 1700
-    bar [1515, 1117, 1420, 503]
-```
-
- Action    | Read | Write | Size
------------|------|-------|------
-ONTAP Snap | 1502 | 1122  | 250G
- .         | 1564 | 1170  | 250M
-PVE Snap   | 1420 | 503   | 250G
- .         | 1506 | 500   | 250G
-
-The tests were done with `fio` in version 3.28 on a Ubuntu Jammy server VM.
-The test commands:
-```bash
-fio --rw=read --name=test --size=250G --direct=1 --bs=1024k --numjobs=2 --group_reporting --runtime 600 --time_based --iodepth=16 --ioengine=libaio
-
-fio --rw=write --name=test --size=250G --direct=1 --bs=1024k --numjobs=2 --group_reporting --runtime 600 --time_based --iodepth=16 --ioengine=libaio
-```
 
 ## Config
 
